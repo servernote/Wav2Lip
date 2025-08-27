@@ -298,6 +298,34 @@ def run_wav2lip(face_path: str, audio_path: str, out_mp4: str, user_params: dict
 
     return out_mp4
 
+def resize_with_padding(image_path, output_path, target_size=(1280, 720)):
+    # 画像読み込み
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError("画像が読み込めませんでした")
+
+    h, w = img.shape[:2]
+    target_w, target_h = target_size
+
+    # 縦横比を維持しながら縮小
+    scale = min(target_w / w, target_h / h)
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    # 黒背景キャンバス作成
+    result = np.zeros((target_h, target_w, 3), dtype=np.uint8)
+
+    # 中央に配置するためのオフセット計算
+    x_offset = (target_w - new_w) // 2
+    y_offset = (target_h - new_h) // 2
+
+    result[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
+
+    # 保存
+    cv2.imwrite(output_path, result)
+
+
 # =========================================================
 # エンドポイント
 # =========================================================
@@ -320,12 +348,15 @@ async def lip_sync(
         work_in = tempfile.mkdtemp(prefix="w2l_in_", dir=BASE_WORK_DIR)
         outdir  = tempfile.mkdtemp(prefix="w2l_out_", dir=BASE_WORK_DIR)
         face_path = os.path.join(work_in, face.filename or "face_input")
+        face_trans = os.path.join(work_in, "face_trans.jpg")
         audio_path = os.path.join(work_in, audio.filename or "audio_input")
         out_mp4    = os.path.join(outdir, "result.mp4")
 
         # 一時保存（大きなファイルでも扱えるように）
         with open(face_path, "wb") as f: shutil.copyfileobj(face.file, f)
         with open(audio_path, "wb") as f: shutil.copyfileobj(audio.file, f)
+
+        resize_with_padding(face_path, face_trans);
 
         params = {
             "fps": float(fps),
@@ -341,7 +372,7 @@ async def lip_sync(
         }
 
         try:
-            out_path = run_wav2lip(face_path, audio_path, out_mp4, params)
+            out_path = run_wav2lip(face_trans, audio_path, out_mp4, params)
             return FileResponse(out_path, media_type="video/mp4", filename="result.mp4")
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -356,7 +387,7 @@ async def lip_sync(
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
             # 入力側の一時ディレクトリは削除（出力側は FileResponse が使うので保持）
-            try:
-                shutil.rmtree(work_in, ignore_errors=True)
-            except Exception:
-                pass
+#            try:
+#                shutil.rmtree(work_in, ignore_errors=True)
+#            except Exception:
+#                pass
