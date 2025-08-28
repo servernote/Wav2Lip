@@ -298,14 +298,21 @@ def run_wav2lip(face_path: str, audio_path: str, out_mp4: str, user_params: dict
 
     return out_mp4
 
-def resize_with_padding(image_path, output_path, target_size=(1280, 720)):
+def resize_with_padding(image_path, output_path):
     # 画像読み込み
     img = cv2.imread(image_path)
     if img is None:
         raise ValueError("画像が読み込めませんでした")
 
     h, w = img.shape[:2]
-    target_w, target_h = target_size
+
+    print("Image size: %d x %d" % (w, h))
+
+    # 縦横比でターゲットサイズを決定
+    if h > w:  # 縦長 → 720×1280
+        target_w, target_h = 720, 1280
+    else:       # 横長 → 1280×720 もしくは正方形
+        target_w, target_h = 1280, 720
 
     # 縦横比を維持しながら縮小
     scale = min(target_w / w, target_h / h)
@@ -316,15 +323,13 @@ def resize_with_padding(image_path, output_path, target_size=(1280, 720)):
     # 黒背景キャンバス作成
     result = np.zeros((target_h, target_w, 3), dtype=np.uint8)
 
-    # 中央に配置するためのオフセット計算
+    # 中央に配置
     x_offset = (target_w - new_w) // 2
     y_offset = (target_h - new_h) // 2
-
     result[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
 
     # 保存
     cv2.imwrite(output_path, result)
-
 
 # =========================================================
 # エンドポイント
